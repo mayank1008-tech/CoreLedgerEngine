@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # --- SHARED INFRASTRUCTURE ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: ledger_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ledger_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ledger-net
+
+  redis:
+    image: redis:alpine
+    container_name: ledger_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - ledger-net
+
+  # --- SERVER 1 ---
+  app1:
+    build: .
+    container_name: ledger_app_1
+    depends_on:
+      - postgres
+      - redis
+    environment: &app_env  # <--- Anchor (Define reusable config)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ledger_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: password
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SERVER_PORT: 8080
+    networks:
+      - ledger-net
+
+  # --- SERVER 2 (The Twin) ---
+  app2:
+    build: .
+    container_name: ledger_app_2
+    depends_on:
+      - postgres
+      - redis
+    environment: *app_env  # <--- Alias (Reuse config from app1)
+    networks:
+      - ledger-net
+
+  # --- THE LOAD BALANCER ---
+  nginx:
+    image: nginx:alpine
+    container_name: ledger_nginx
+    ports:
+      - "80:80"  # <--- Expose standard web port
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro  # Mount our config file
+    depends_on:
+      - app1
+      - app2
+    networks:
+      - ledger-net
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: ledger_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    networks:
+      - ledger-net
+
+networks:
+  ledger-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
