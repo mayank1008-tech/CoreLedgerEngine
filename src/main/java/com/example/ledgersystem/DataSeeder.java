@@ -8,7 +8,7 @@ import com.example.ledgersystem.repositories.AccountRepository;
 import com.example.ledgersystem.repositories.RoleRepository;
 import com.example.ledgersystem.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -19,6 +19,7 @@ import java.util.List;
 
 @Component // <--- Tells Spring to manage this class
 @RequiredArgsConstructor
+@Slf4j
 public class DataSeeder implements CommandLineRunner {
 	private final PasswordEncoder passwordEncoder;
 
@@ -33,17 +34,21 @@ public class DataSeeder implements CommandLineRunner {
 
 		// 1. Check if data already exists so we don't duplicate every restart
 		if (accountRepository.count() > 0) {
-			System.out.println("✅ Database already seeded. Skipping...");
+			log.info("Database already seeded. Skipping data initialization.");
 			return;
 		}
 		
+		log.info("Starting database seed...");
+
 		Role userRole = roleRepository
 				.findByRoleName(AppRoles.ROLE_USER)
 				.orElseGet(() -> roleRepository.save(new Role(AppRoles.ROLE_USER)));
+		log.debug("Role created/found: {}", AppRoles.ROLE_USER);
 		
 		Role adminRole = roleRepository
 				.findByRoleName(AppRoles.ROLE_ADMIN)
 				.orElseGet(() -> roleRepository.save(new Role(AppRoles.ROLE_ADMIN)));
+		log.debug("Role created/found: {}", AppRoles.ROLE_ADMIN);
 		
 		User systemAdmin = new User();
 		systemAdmin.setUsername("systemAdmin");
@@ -51,6 +56,7 @@ public class DataSeeder implements CommandLineRunner {
 		systemAdmin.setRole(List.of(userRole, adminRole));
 		systemAdmin.setEmail("system@gmail.com");
 		userRepository.save(systemAdmin);
+		log.debug("System admin user created: username=systemAdmin");
 		
 		Account systemAccount = new Account();
 		systemAccount.setName("CENTRAL_BANK");
@@ -58,6 +64,7 @@ public class DataSeeder implements CommandLineRunner {
 		systemAccount.setCurrency("INR");
 		systemAccount.setUser(systemAdmin);
 		accountRepository.save(systemAccount);
+		log.debug("CENTRAL_BANK account created: accountId={}", systemAccount.getAccountId());
 		
 		// ---- CREATE USERS ----
 		User aliceUser = new User();
@@ -79,6 +86,7 @@ public class DataSeeder implements CommandLineRunner {
 		charlieUser.setRole(List.of(userRole));
 		
 		userRepository.saveAll(List.of(aliceUser, bobUser, charlieUser));
+		log.debug("Test users created: alice, bob, charlie");
 		
 		// 2. Create Dummy Accounts
 		Account alice = new Account();
@@ -102,13 +110,7 @@ public class DataSeeder implements CommandLineRunner {
 		// 3. Save to DB
 		accountRepository.saveAll(Arrays.asList(alice, bob, charlie));
 
-		// 4. PRINT UUIDs (Critical for Testing!)
-		System.out.println("--------------------------------------------");
-		System.out.println("🎉 DATA SEEDED SUCCESSFULLY");
-		System.out.println("--------------------------------------------");
-		System.out.println("👤 Alice UUID:   " + alice.getAccountId());
-		System.out.println("👤 Bob UUID:     " + bob.getAccountId());
-		System.out.println("👤 Charlie UUID: " + charlie.getAccountId());
-		System.out.println("--------------------------------------------");
+		log.info("Database seeded successfully. Accounts: alice={}, bob={}, charlie={}",
+				alice.getAccountId(), bob.getAccountId(), charlie.getAccountId());
 	}
 }

@@ -15,6 +15,7 @@ import com.example.ledgersystem.service.RateLimitingService;
 import com.example.ledgersystem.utils.AuthUtils;
 import io.github.bucket4j.Bucket; // Import Bucket
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +27,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
+@Slf4j
 public class AccountController {
 	
 	@Autowired
@@ -50,9 +52,13 @@ public class AccountController {
 	@PostMapping("/transfer")
 	public ResponseEntity<ApiResponse> transferMoney(@Valid @RequestBody MoneyTransferDTO moneyTransferDTO) {
 		UUID userId = authUtils.loggedInUserId();
+		log.info("Transfer API called: fromAccount={}, toAccount={}, amount={}, reference={}, user={}",
+				moneyTransferDTO.getFromAccountId(), moneyTransferDTO.getToAccountId(),
+				moneyTransferDTO.getAmount(), moneyTransferDTO.getReferenceId(), userId);
 		
 		// 🛡️ SHIELD
 		if (isRateLimited(userId, RateLimitType.TRANSACTION)) {
+			log.warn("Rate limit exceeded: userId={}, type=TRANSACTION, endpoint=/api/transfer", userId);
 			return new ResponseEntity<>(
 					new ApiResponse("Too many requests! Please wait a minute.", false),
 					HttpStatus.TOO_MANY_REQUESTS
@@ -66,6 +72,7 @@ public class AccountController {
 				moneyTransferDTO.getReferenceId(),
 				userId
 		);
+		log.info("Transfer API completed: reference={}, user={}", moneyTransferDTO.getReferenceId(), userId);
 		return new ResponseEntity<>(apiResponse, HttpStatus.OK);
 	}
 	
@@ -77,9 +84,11 @@ public class AccountController {
 			@RequestParam(name = "sortBy", defaultValue = "loggedAt", required = false) String sortBy,
 			@RequestParam(name = "sortOrder", defaultValue = AppConst.SORT_ORDER, required = false) String sortOrder) {
 		UUID userId = authUtils.loggedInUserId();
+		log.info("Statement API called: accountId={}, pageNumber={}, pageSize={}, user={}", accountId, pageNumber, pageSize, userId);
 		
 		// 🛡️ SHIELD
 		if (isRateLimited(userId, RateLimitType.GENERAL)) {
+			log.warn("Rate limit exceeded: userId={}, type=GENERAL, endpoint=/api/statement/{}", userId, accountId);
 			return new ResponseEntity<>(
 					new ApiResponse("Too many requests! Please wait a minute.", false),
 					HttpStatus.TOO_MANY_REQUESTS
@@ -87,15 +96,20 @@ public class AccountController {
 		}
 		
 		StatementResponse statementResponse = accountService.accountStatement(accountId, pageNumber, pageSize, sortBy, sortOrder, userId);
+		log.debug("Statement API completed: accountId={}, user={}", accountId, userId);
 		return new ResponseEntity<>(statementResponse, HttpStatus.OK);
 	}
 	
 	@PostMapping("/deposit")
 	public ResponseEntity<ApiResponse> deposit(@Valid @RequestBody DepositRequestDTO depositRequestDTO) {
 		UUID userId = authUtils.loggedInUserId();
+		log.info("Deposit API called: toAccount={}, amount={}, reference={}, user={}",
+				depositRequestDTO.getToAccountId(), depositRequestDTO.getAmount(),
+				depositRequestDTO.getReferenceId(), userId);
 		
 		// 🛡️ SHIELD
 		if (isRateLimited(userId, RateLimitType.TRANSACTION)) {
+			log.warn("Rate limit exceeded: userId={}, type=TRANSACTION, endpoint=/api/deposit", userId);
 			return new ResponseEntity<>(
 					new ApiResponse("Too many requests! Please wait a minute.", false),
 					HttpStatus.TOO_MANY_REQUESTS
@@ -108,15 +122,20 @@ public class AccountController {
 				depositRequestDTO.getReferenceId(),
 				userId
 		);
+		log.info("Deposit API completed: reference={}, user={}", depositRequestDTO.getReferenceId(), userId);
 		return new ResponseEntity<>(apiResponse, HttpStatus.OK);
 	}
 	
 	@PostMapping("/withdraw")
 	public ResponseEntity<ApiResponse> withdraw(@Valid @RequestBody WithdrawRequestDTO withdrawRequestDTO) {
 		UUID userId = authUtils.loggedInUserId();
+		log.info("Withdraw API called: fromAccount={}, amount={}, reference={}, user={}",
+				withdrawRequestDTO.getFromAccountId(), withdrawRequestDTO.getAmount(),
+				withdrawRequestDTO.getReferenceId(), userId);
 		
 		// 🛡️ SHIELD
 		if (isRateLimited(userId, RateLimitType.TRANSACTION)) {
+			log.warn("Rate limit exceeded: userId={}, type=TRANSACTION, endpoint=/api/withdraw", userId);
 			return new ResponseEntity<>(
 					new ApiResponse("Too many requests! Please wait a minute.", false),
 					HttpStatus.TOO_MANY_REQUESTS
@@ -125,6 +144,7 @@ public class AccountController {
 		
 		Optional<Account> toAccount = accountRepository.findByName("CENTRAL_BANK");
 		if (toAccount.isEmpty()) {
+			log.error("System error: CENTRAL_BANK account not found during withdrawal, reference={}", withdrawRequestDTO.getReferenceId());
 			throw new APIexception("System Error: Central Bank Vault missing");
 		}
 		
@@ -135,6 +155,7 @@ public class AccountController {
 				withdrawRequestDTO.getReferenceId(),
 				userId
 		);
+		log.info("Withdraw API completed: reference={}, user={}", withdrawRequestDTO.getReferenceId(), userId);
 		return new ResponseEntity<>(apiResponse, HttpStatus.OK);
 	}
 	
@@ -142,9 +163,11 @@ public class AccountController {
 	@GetMapping("/balance/{accountId}")
 	public ResponseEntity<?> getBalance(@PathVariable UUID accountId) {
 		UUID authenticatedUserId = authUtils.loggedInUserId();
+		log.info("Balance API called: accountId={}, user={}", accountId, authenticatedUserId);
 		
 		// 🛡️ SHIELD
 		if (isRateLimited(authenticatedUserId, RateLimitType.GENERAL)) {
+			log.warn("Rate limit exceeded: userId={}, type=GENERAL, endpoint=/api/balance/{}", authenticatedUserId, accountId);
 			return new ResponseEntity<>(
 					new ApiResponse("Too many requests! Please wait a minute.", false),
 					HttpStatus.TOO_MANY_REQUESTS
@@ -152,6 +175,7 @@ public class AccountController {
 		}
 		
 		BigDecimal balance = accountService.getBalance(accountId, authenticatedUserId);
+		log.debug("Balance API completed: accountId={}, user={}", accountId, authenticatedUserId);
 		return new ResponseEntity<>(balance, HttpStatus.OK);
 	}
 }

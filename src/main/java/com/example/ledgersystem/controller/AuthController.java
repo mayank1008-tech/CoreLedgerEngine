@@ -9,6 +9,7 @@ import com.example.ledgersystem.Security.jwt.JwtUtils;
 import com.example.ledgersystem.model.User;
 import com.example.ledgersystem.repositories.UserRepository;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
+@Slf4j
 public class AuthController {
 
     @Autowired
@@ -48,12 +50,14 @@ public class AuthController {
 
     @PostMapping("/signin")
     public ResponseEntity<?> authenticateUser(@RequestBody LoginRequestDTO loginRequestDTO){
+        log.info("Sign-in attempt: username={}", loginRequestDTO.getUsername());
         Authentication authentication;  //auth obj
         try{
             authentication = authenticationManager.authenticate(  //.authenticate will check the username and password with the obj provided, and then it will load auth obj with userdetails if correct
                     new UsernamePasswordAuthenticationToken(loginRequestDTO.getUsername(), loginRequestDTO.getPassword()) //Usernamepasstokken is used to describe username pass
             );
         }catch(AuthenticationException e){
+            log.warn("Sign-in failed: username={}, reason={}", loginRequestDTO.getUsername(), e.getMessage());
             Map<String , Object> map = new HashMap<>();
             map.put("message", "Invalid username or password");
             map.put("status", false);
@@ -70,21 +74,25 @@ public class AuthController {
 	    
 	    assert userDetails != null;
 	    UserInfoResponse response = new UserInfoResponse(userDetails.getId(), userDetails.getUsername(), tokenString);
+        log.info("Sign-in successful: username={}, userId={}", userDetails.getUsername(), userDetails.getId());
 
         return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookie.toString()).body(response);
     }
 
     @PostMapping("/signup")
     public ResponseEntity<?> registerUser(@Valid @RequestBody SignUpRequest signUpRequest){
+        log.info("Sign-up attempt: username={}, email={}", signUpRequest.getUsername(), signUpRequest.getEmail());
 
         //Checking for already existing account
         //Checking for already existing account
         if(userRepository.existsByUsername(signUpRequest.getUsername())){
+            log.warn("Sign-up rejected: username already taken, username={}", signUpRequest.getUsername());
             // FIX: Send the object, not the string
             return ResponseEntity.badRequest().body(new MessageResponse("Error: Username is already taken!"));
         }
 
         if(userRepository.existsByEmail(signUpRequest.getEmail())){
+            log.warn("Sign-up rejected: email already in use, email={}", signUpRequest.getEmail());
             // FIX: Send the object, not the string
             return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
         }
@@ -96,6 +104,7 @@ public class AuthController {
                 signUpRequest.getEmail()
         );
         userRepository.save(user);
+        log.info("Sign-up successful: username={}, email={}", signUpRequest.getUsername(), signUpRequest.getEmail());
         return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
     }
 
@@ -122,6 +131,7 @@ public class AuthController {
 
     @PostMapping("/signout")
     public ResponseEntity<?> logoutUser(){
+        log.info("Sign-out requested");
         ResponseCookie cookie = jwtUtils.getCleanCookie();
         return  ResponseEntity.ok().header(HttpHeaders.SET_COOKIE,
                 cookie.toString()).body(new MessageResponse("Successfully logged out!"));

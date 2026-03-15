@@ -9,7 +9,7 @@ import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -21,8 +21,8 @@ import java.util.Date;
 
 
 @Component
+@Slf4j
 public class JwtUtils {
-    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(JwtUtils.class);
 
     @Value("${spring.app.jwtExpirationMs}")
     private long jwtExpirationMs;
@@ -38,7 +38,7 @@ public class JwtUtils {
     //FOR SWAGGER AS VO COOKIE NHI SAMJHTA
     public String getJwtFromHeader(HttpServletRequest request) {
         String bearerToken  = request.getHeader("Authorization");
-        logger.debug("Authorization Header: {}",bearerToken);
+        log.debug("Authorization Header: {}", bearerToken);
         if(bearerToken != null && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7); //Remove bearer prefix
         }
@@ -56,6 +56,7 @@ public class JwtUtils {
 
     public ResponseCookie generateJwtCookie(UserDetailsImpl userDetails) { //Used in sign in
         String jwt = generateTokenFromUsername(userDetails);
+        log.debug("JWT cookie generated for user: {}", userDetails.getUsername());
         ResponseCookie cookie = ResponseCookie.from(jwtCookie, jwt)
                 .path("/api")  //Valid within this
                 .maxAge(24*60*60)
@@ -74,6 +75,7 @@ public class JwtUtils {
     //Generate token from username
     public String generateTokenFromUsername(UserDetailsImpl userDetails) {
         String username = userDetails.getUsername();
+        log.debug("Generating JWT token for user: {}", username);
         return Jwts.builder()
                 .subject(username) //setting data
                 .issuedAt(new Date())
@@ -100,20 +102,20 @@ public class JwtUtils {
     //Validate JWT Token
     public boolean validateToken(String token) {
         try{
-            System.out.println("Validate");
+            log.debug("Validating JWT token");
             Jwts.parser()
                     .verifyWith((SecretKey) key())
                     .build()
                     .parseSignedClaims(token);
             return true;
         }catch(MalformedJwtException exception){
-            logger.info("Invalid token: {}", exception.getMessage());
+            log.warn("Invalid JWT token: {}", exception.getMessage());
         } catch (ExpiredJwtException e){
-            logger.error("ExpiredJwtException: {}", e.getMessage());
+            log.warn("JWT token expired: {}", e.getMessage());
         } catch (UnsupportedJwtException e){
-            logger.error("UnsupportedJwtException: {}", e.getMessage());
+            log.warn("Unsupported JWT token: {}", e.getMessage());
         } catch (IllegalArgumentException e){
-            logger.error("IllegalArgumentException: {}", e.getMessage());
+            log.warn("JWT claims string is empty: {}", e.getMessage());
         }
         return false;
     }

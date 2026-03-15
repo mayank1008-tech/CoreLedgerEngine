@@ -61,35 +61,53 @@ public class AccountServiceImpl implements AccountService {
 	@Transactional
 	@Override
 	public ApiResponse transfer(UUID fromAccountId, UUID toAccountId, BigDecimal amount, String refrenceId, UUID authenticatedUserId){
-		
+		log.info("Transfer initiated: fromAccount={}, toAccount={}, amount={}, reference={}, user={}",
+				fromAccountId, toAccountId, amount, refrenceId, authenticatedUserId);
+
 		if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+			log.warn("Transfer rejected: amount must be greater than zero, amount={}, reference={}", amount, refrenceId);
 			throw new APIexception("Transfer amount must be greater than zero");
 		}
-		
+
+		log.debug("Checking for duplicate transaction: reference={}", refrenceId);
 		Optional<Transaction> trans = transactionRepository.findByReferenceId(refrenceId);
 		if(trans.isPresent()){
+			log.warn("Duplicate transaction detected: reference={}, user={}", refrenceId, authenticatedUserId);
 			throw new DuplicateTransactionException(refrenceId);
 		}
 		
 		Optional<Account> existingSendersAccount = accountRepository.findById(fromAccountId);
 		if(existingSendersAccount.isEmpty()){
+			log.error("Sender account not found: fromAccount={}", fromAccountId);
 			throw new AccountNotFound(fromAccountId);
 		}
 		
 		boolean isCentralVault = existingSendersAccount.get().getName().equals("CENTRAL_BANK");
 		UUID ownerId = existingSendersAccount.get().getUser().getUser_id();
-		
+		log.debug("Sender account found: name={}, balance={}, isCentralVault={}",
+				existingSendersAccount.get().getName(),
+				existingSendersAccount.get().getBalance(),
+				isCentralVault);
+
 		if (!isCentralVault && !ownerId.equals(authenticatedUserId)) {
+			log.warn("Unauthorized transfer attempt: fromAccount={}, requestedBy={}, owner={}",
+					fromAccountId, authenticatedUserId, ownerId);
 			throw new APIexception("You do not own this account!");
 		}
 		
 		Optional<Account> existingRecieversAccount = accountRepository.findById(toAccountId);
 		if(existingRecieversAccount.isEmpty()){
+			log.error("Receiver account not found: toAccount={}", toAccountId);
 			throw new AccountNotFound(toAccountId);
 		}
-		
+		log.debug("Receiver account found: name={}, balance={}",
+				existingRecieversAccount.get().getName(),
+				existingRecieversAccount.get().getBalance());
+
 		if(!existingSendersAccount.get().getName().equals("CENTRAL_BANK")
 				&& existingSendersAccount.get().getBalance().compareTo(amount) < 0){
+			log.warn("Insufficient funds: requested={}, available={}, fromAccount={}, user={}",
+					amount, existingSendersAccount.get().getBalance(), fromAccountId, authenticatedUserId);
 			throw new InsufficientFundsException(fromAccountId);
 		}
 		
@@ -103,8 +121,10 @@ public class AccountServiceImpl implements AccountService {
 		createLedgerEntry(existingSendersAccount.get(), amount.negate(), transaction);
 		createLedgerEntry(existingRecieversAccount.get(), amount, transaction);
 		
-		existingSendersAccount.get().setBalance(existingSendersAccount.get().getBalance().subtract(amount));
-		existingRecieversAccount.get().setBalance(existingRecieversAccount.get().getBalance().add(amount));
+		BigDecimal senderNewBalance = existingSendersAccount.get().getBalance().subtract(amount);
+		BigDecimal receiverNewBalance = existingRecieversAccount.get().getBalance().add(amount);
+		existingSendersAccount.get().setBalance(senderNewBalance);
+		existingRecieversAccount.get().setBalance(receiverNewBalance);
 		
 		accountRepository.save(existingSendersAccount.get());
 		accountRepository.save(existingRecieversAccount.get());
@@ -115,7 +135,11 @@ public class AccountServiceImpl implements AccountService {
 		// 2. Invalidate Receiver
 		String receiverKey = "balance:" + toAccountId;
 		redisTemplate.delete(receiverKey);
-		
+		log.debug("Cache invalidated for accounts: fromAccount={}, toAccount={}", fromAccountId, toAccountId);
+
+		log.info("Transfer completed: reference={}, amount={}, fromAccount={}, fromNewBalance={}, toAccount={}, toNewBalance={}",
+				refrenceId, amount, fromAccountId, senderNewBalance, toAccountId, receiverNewBalance);
+
 		String message = "Transfer successful";
 		ApiResponse response = new ApiResponse();
 		response.setMessage(message);
@@ -151,7 +175,9 @@ public class AccountServiceImpl implements AccountService {
 	@Transactional
 	@Override
 	public ApiResponse deposit(UUID toAccountId, BigDecimal amount, String refId, UUID authenticatedUserId) {
-		
+		log.info("Deposit initiated: toAccount={}, amount={}, reference={}, user={}",
+				toAccountId, amount, refId, authenticatedUserId);
+
 		// 1. Fetch the Target Account
 		Account targetAccount = accountRepository.findById(toAccountId)
 				.orElseThrow(() -> new AccountNotFound(toAccountId));
@@ -159,15 +185,19 @@ public class AccountServiceImpl implements AccountService {
 		// 2. SECURITY CHECK: Ensure the User is depositing into THEIR OWN account
 		UUID ownerId = targetAccount.getUser().getUser_id();
 		if (!ownerId.equals(authenticatedUserId)) {
+			log.warn("Unauthorized deposit attempt: toAccount={}, requestedBy={}, owner={}",
+					toAccountId, authenticatedUserId, ownerId);
 			throw new APIexception("Security Alert: You can only deposit funds into your own account!");
 		}
 		
 		// 3. Fetch Central Bank
 		Optional<Account> centralBank = accountRepository.findByName("CENTRAL_BANK");
 		if(centralBank.isEmpty()){
+			log.error("System error: CENTRAL_BANK account not found during deposit, reference={}", refId);
 			throw new APIexception("System Error: Central Bank Vault missing");
 		}
 		
+		log.debug("Delegating deposit to transfer: centralBank={}, toAccount={}", centralBank.get().getAccountId(), toAccountId);
 		// 4. Perform the Transfer (Using the Bypass Logic we added)
 		// We pass "system" or specific logic to bypass the ownership check for the SENDER (Central Bank)
 		// But we have already verified the RECEIVER above.
@@ -176,6 +206,7 @@ public class AccountServiceImpl implements AccountService {
 	
 	@Override
 	public BigDecimal getBalance(UUID accountId, UUID authenticatedUserId) {
+		log.debug("Balance requested: accountId={}, user={}", accountId, authenticatedUserId);
 		String key = "balance:" + accountId;
 		
 		// --- 1. FAST PATH (Redis) ---
@@ -188,15 +219,16 @@ public class AccountServiceImpl implements AccountService {
 				
 				// 🔒 SECURITY CHECK (In Memory - 0ms)
 				if (!cacheDto.getOwnerId().equals(authenticatedUserId)) {
+					log.warn("Unauthorized balance access from cache: accountId={}, requestedBy={}", accountId, authenticatedUserId);
 					throw new APIexception("Security Alert: You do not own this account!");
 				}
 				
-				System.out.println("🚀 CACHE HIT: Returning securely from Redis!");
+				log.debug("Cache hit: returning balance from Redis for accountId={}", accountId);
 				return cacheDto.getBalance();
 			}
 			
 			// --- 2. SLOW PATH (Database) ---
-			System.out.println("🐢 CACHE MISS: Fetching from DB...");
+			log.debug("Cache miss: fetching balance from DB for accountId={}", accountId);
 		}catch (RedisConnectionFailureException e){
 			log.warn("Redis unavailable, continuing without cache: {}", e.getMessage());
 		}
@@ -206,6 +238,7 @@ public class AccountServiceImpl implements AccountService {
 		
 		// 🔒 SECURITY CHECK (Database Level)
 		if (!account.getUser().getUser_id().equals(authenticatedUserId)) {
+			log.warn("Unauthorized balance access from DB: accountId={}, requestedBy={}", accountId, authenticatedUserId);
 			throw new APIexception("Security Alert: You do not own this account!");
 		}
 		
@@ -220,22 +253,28 @@ public class AccountServiceImpl implements AccountService {
 		try {
 			// Save to Redis (Expires in 10 mins)
 			redisTemplate.opsForValue().set(key, newCacheEntry, 10, TimeUnit.MINUTES);
+			log.debug("Balance cached in Redis: accountId={}, ttl=10min", accountId);
 		}catch (RedisConnectionFailureException e){
 			log.warn("Redis unavailable, continuing without cache: {}", e.getMessage());
 		}
 		
+		log.info("Balance retrieved from DB: accountId={}, balance={}, user={}", accountId, balance, authenticatedUserId);
 		return balance;
 	}
 	
 	@Override
 	public StatementResponse accountStatement(UUID accountId, Integer pageNumber, Integer pageSize, String sortBy, String sortOrder, UUID authenticatedUserId){
+		log.info("Account statement requested: accountId={}, pageNumber={}, pageSize={}, sortBy={}, sortOrder={}, user={}",
+				accountId, pageNumber, pageSize, sortBy, sortOrder, authenticatedUserId);
 		Optional<Account> existingAccount = accountRepository.findById(accountId);
 		if(existingAccount.isEmpty()){
+			log.error("Account not found for statement: accountId={}", accountId);
 			throw new AccountNotFound(accountId);
 		}
 		UUID ownerId = existingAccount.get().getUser().getUser_id();
 		
 		if (!ownerId.equals(authenticatedUserId)) {
+			log.warn("Unauthorized statement access: accountId={}, requestedBy={}, owner={}", accountId, authenticatedUserId, ownerId);
 			throw new APIexception("You do not own this account!");
 		}
 		
@@ -264,6 +303,8 @@ public class AccountServiceImpl implements AccountService {
 		statementResponse.setTotalElements(pagedLedgers.getTotalElements());
 		statementResponse.setTotalPages(pagedLedgers.getTotalPages());
 		
+		log.debug("Account statement returned: accountId={}, entries={}, totalPages={}, user={}",
+				accountId, entries.size(), pagedLedgers.getTotalPages(), authenticatedUserId);
 		return statementResponse;
 	}
 }

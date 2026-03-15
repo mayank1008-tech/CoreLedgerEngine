@@ -4,6 +4,7 @@ import com.example.ledgersystem.Payloads.Auditresponse;
 import com.example.ledgersystem.repositories.AccountRepository;
 import com.example.ledgersystem.repositories.LedgerEntryRepository;
 import com.example.ledgersystem.service.AdminService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,6 +17,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/admin")
+@Slf4j
 public class AdminController {
 	@Autowired
 	private AdminService adminService;
@@ -23,7 +25,9 @@ public class AdminController {
 	@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 	@GetMapping("/audit/{accountId}")
 	ResponseEntity<Auditresponse> audit(@PathVariable UUID accountId){
+		log.info("Admin audit API called: accountId={}", accountId);
 		Auditresponse auditresponse = adminService.audit(accountId);
+		log.info("Admin audit API completed: accountId={}, result={}", accountId, auditresponse.getStatus());
 		return  ResponseEntity.ok(auditresponse);
 	}
 	
