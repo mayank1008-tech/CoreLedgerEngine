@@ -1,0 +1,91 @@
+name: 🤖 CI Pipeline - Build & Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ============================================
+  # JOB 1: Run Unit Tests (Simple!)
+  # ============================================
+  unit-tests:
+    name: 🧪 Run Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🔧 Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # THIS IS IT - Just run tests, no services needed!
+      - name: ✅ Run Unit Tests
+        run: mvn clean test -B
+
+      # Upload test results for visibility
+      - name: 📊 Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: target/surefire-reports/
+
+  # ============================================
+  # JOB 2: Build Application
+  # ============================================
+  build:
+    name: 🏗️ Build Application
+    runs-on: ubuntu-latest
+    needs: unit-tests  # Only run if tests pass
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🔧 Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: 🏗️ Build with Maven
+        run: mvn clean package -DskipTests -B
+
+      - name: 📦 Upload JAR
+        uses: actions/upload-artifact@v3
+        with:
+          name: ledger-jar
+          path: target/LedgerSystem-0.0.1-SNAPSHOT.jar
+
+  # ============================================
+  # JOB 3: Build Docker Image (Optional)
+  # ============================================
+  build-docker:
+    name: 🐳 Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [unit-tests, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: 🐳 Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false  # Just build, don't push yet
+          tags: ledger-system:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
