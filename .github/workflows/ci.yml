@@ -29,10 +29,10 @@ jobs:
       - name: ✅ Run Unit Tests
         run: mvn clean test -B
 
-      # Upload test results for visibility
+      # Upload test results for visibility - FIXED: v3 → v4
       - name: 📊 Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: target/surefire-reports/
@@ -59,8 +59,9 @@ jobs:
       - name: 🏗️ Build with Maven
         run: mvn clean package -DskipTests -B
 
+      # FIXED: v3 → v4
       - name: 📦 Upload JAR
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ledger-jar
           path: target/LedgerSystem-0.0.1-SNAPSHOT.jar
@@ -85,7 +86,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          push: false  # Just build, don't push yet
+          push: false
           tags: ledger-system:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
