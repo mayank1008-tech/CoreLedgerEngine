@@ -10,11 +10,11 @@ import com.example.ledgersystem.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
 import java.util.List;
 
 @Component // <--- Tells Spring to manage this class
@@ -40,77 +40,46 @@ public class DataSeeder implements CommandLineRunner {
 		
 		log.info("Starting database seed...");
 
-		Role userRole = roleRepository
-				.findByRoleName(AppRoles.ROLE_USER)
-				.orElseGet(() -> roleRepository.save(new Role(AppRoles.ROLE_USER)));
-		log.debug("Role created/found: {}", AppRoles.ROLE_USER);
-		
-		Role adminRole = roleRepository
-				.findByRoleName(AppRoles.ROLE_ADMIN)
-				.orElseGet(() -> roleRepository.save(new Role(AppRoles.ROLE_ADMIN)));
-		log.debug("Role created/found: {}", AppRoles.ROLE_ADMIN);
-		
-		User systemAdmin = new User();
-		systemAdmin.setUsername("systemAdmin");
-		systemAdmin.setPassword(passwordEncoder.encode("pass123"));
-		systemAdmin.setRole(List.of(userRole, adminRole));
-		systemAdmin.setEmail("system@gmail.com");
-		userRepository.save(systemAdmin);
-		log.debug("System admin user created: username=systemAdmin");
-		
-		Account systemAccount = new Account();
-		systemAccount.setName("CENTRAL_BANK");
-		systemAccount.setBalance(new BigDecimal("0.00"));
-		systemAccount.setCurrency("INR");
-		systemAccount.setUser(systemAdmin);
-		accountRepository.save(systemAccount);
-		log.debug("CENTRAL_BANK account created: accountId={}", systemAccount.getAccountId());
-		
-		// ---- CREATE USERS ----
-		User aliceUser = new User();
-		aliceUser.setEmail("alice@gmail.com");
-		aliceUser.setPassword(passwordEncoder.encode("pass123"));
-		aliceUser.setUsername("alice");
-		aliceUser.setRole(List.of(userRole));
-		
-		User bobUser = new User();
-		bobUser.setEmail("bob@gmail.com");
-		bobUser.setPassword(passwordEncoder.encode("pass123"));
-		bobUser.setUsername("bob");
-		bobUser.setRole(List.of(userRole, adminRole));
-		
-		User charlieUser = new User();
-		charlieUser.setEmail("charlie@gmail.com");
-		charlieUser.setPassword(passwordEncoder.encode("pass123"));
-		charlieUser.setUsername("charlie");
-		charlieUser.setRole(List.of(userRole));
-		
-		userRepository.saveAll(List.of(aliceUser, bobUser, charlieUser));
-		log.debug("Test users created: alice, bob, charlie");
-		
-		// 2. Create Dummy Accounts
-		Account alice = new Account();
-		alice.setName("Alice");
-		alice.setCurrency("INR");
-		alice.setBalance(new BigDecimal("1000.0000")); // Initial "Gift"
-		alice.setUser(aliceUser);
-
-		Account bob = new Account();
-		bob.setName("Bob");
-		bob.setCurrency("INR");
-		bob.setBalance(new BigDecimal("1000.0000"));
-		bob.setUser(bobUser);
-
-		Account charlie = new Account();
-		charlie.setName("Charlie");
-		charlie.setCurrency("INR");
-		charlie.setBalance(new BigDecimal("5000.0000"));
-		charlie.setUser(charlieUser);
-
-		// 3. Save to DB
-		accountRepository.saveAll(Arrays.asList(alice, bob, charlie));
-
-		log.info("Database seeded successfully. Accounts: alice={}, bob={}, charlie={}",
-				alice.getAccountId(), bob.getAccountId(), charlie.getAccountId());
+		try {
+			Role userRole = roleRepository
+					.findByRoleName(AppRoles.ROLE_USER)
+					.orElseGet(() -> roleRepository.save(new Role(AppRoles.ROLE_USER)));
+			log.debug("Role created/found: {}", AppRoles.ROLE_USER);
+			
+			Role adminRole = roleRepository
+					.findByRoleName(AppRoles.ROLE_ADMIN)
+					.orElseGet(() -> roleRepository.save(new Role(AppRoles.ROLE_ADMIN)));
+			log.debug("Role created/found: {}", AppRoles.ROLE_ADMIN);
+			
+			User systemAdmin = new User();
+			systemAdmin.setUsername("systemAdmin");
+			systemAdmin.setPassword(passwordEncoder.encode("pass123"));
+			systemAdmin.setRole(List.of(userRole, adminRole));
+			systemAdmin.setEmail("system@admin.com");
+			userRepository.save(systemAdmin);
+			log.debug("System admin user created: username=systemAdmin, email=system@admin.com");
+			
+			Account centralBank = new Account();
+			centralBank.setName("CENTRAL_BANK");
+			centralBank.setBalance(new BigDecimal("0.00"));
+			centralBank.setCurrency("INR");
+			centralBank.setUser(systemAdmin);
+			accountRepository.save(centralBank);
+			log.debug("CENTRAL_BANK account created: accountId={}", centralBank.getAccountId());
+			
+			log.info("Database seeded successfully.");
+			log.info("=====================================");
+			log.info("System ready! Available endpoints:");
+			log.info("  POST /api/auth/signup     - Register a new user");
+			log.info("  POST /api/auth/signin     - Login");
+			log.info("  POST /api/account/create  - Create a new account (auth required)");
+			log.info("  GET  /api/account/list    - List your accounts (auth required)");
+			log.info("  POST /api/deposit         - Deposit funds (auth required)");
+			log.info("  POST /api/transfer        - Transfer funds (auth required)");
+			log.info("  POST /api/withdraw        - Withdraw funds (auth required)");
+			log.info("=====================================");
+		} catch (DataIntegrityViolationException e) {
+			log.warn("Data seeding skipped due to concurrent initialization: {}", e.getMessage());
+		}
 	}
 }

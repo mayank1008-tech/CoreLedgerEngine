@@ -6,7 +6,10 @@ import com.example.ledgersystem.Security.Response.MessageResponse;
 import com.example.ledgersystem.Security.Response.UserInfoResponse;
 import com.example.ledgersystem.Security.Services.UserDetailsImpl;
 import com.example.ledgersystem.Security.jwt.JwtUtils;
+import com.example.ledgersystem.model.AppRoles;
+import com.example.ledgersystem.model.Role;
 import com.example.ledgersystem.model.User;
+import com.example.ledgersystem.repositories.RoleRepository;
 import com.example.ledgersystem.repositories.UserRepository;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +30,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -43,6 +48,9 @@ public class AuthController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private RoleRepository roleRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -84,27 +92,32 @@ public class AuthController {
         log.info("Sign-up attempt: username={}, email={}", signUpRequest.getUsername(), signUpRequest.getEmail());
 
         //Checking for already existing account
-        //Checking for already existing account
         if(userRepository.existsByUsername(signUpRequest.getUsername())){
             log.warn("Sign-up rejected: username already taken, username={}", signUpRequest.getUsername());
-            // FIX: Send the object, not the string
             return ResponseEntity.badRequest().body(new MessageResponse("Error: Username is already taken!"));
         }
 
         if(userRepository.existsByEmail(signUpRequest.getEmail())){
             log.warn("Sign-up rejected: email already in use, email={}", signUpRequest.getEmail());
-            // FIX: Send the object, not the string
             return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
         }
 
+        // Resolve roles - only ROLE_USER is assignable during self-service signup
+        List<Role> roles = new ArrayList<>();
+        Role userRole = roleRepository.findByRoleName(AppRoles.ROLE_USER)
+                .orElseGet(() -> roleRepository.save(new Role(AppRoles.ROLE_USER)));
+        roles.add(userRole);
+        log.debug("Sign-up: assigned ROLE_USER to username={}", signUpRequest.getUsername());
+
         //Saving User
-        User user = new User(  //Creating user object for saving
+        User user = new User(
                 signUpRequest.getUsername(),
                 passwordEncoder.encode(signUpRequest.getPassword()),
                 signUpRequest.getEmail()
         );
+        user.setRole(roles);
         userRepository.save(user);
-        log.info("Sign-up successful: username={}, email={}", signUpRequest.getUsername(), signUpRequest.getEmail());
+        log.info("Sign-up successful: username={}, email={}, roles={}", signUpRequest.getUsername(), signUpRequest.getEmail(), roles);
         return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
     }
 
