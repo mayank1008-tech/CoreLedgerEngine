@@ -1,48 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+	<property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
 
-    <property name="LOG_PATH" value="logs"/>
-    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+	<!-- Console Appender Only -->
+	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>${LOG_PATTERN}</pattern>
+		</encoder>
+	</appender>
 
-    <!-- Console Appender (for development) -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>${LOG_PATTERN}</pattern>
-        </encoder>
-    </appender>
+	<!-- YOUR APPLICATION -->
+	<logger name="com.example.ledgersystem" level="DEBUG" additivity="false">
+		<appender-ref ref="CONSOLE"/>
+	</logger>
 
-    <!-- Rolling File Appender (for production) -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_PATH}/ledgersystem.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- Daily rolling, keep 30 days, max 100MB per day -->
-            <fileNamePattern>${LOG_PATH}/ledgersystem.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
-            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                <maxFileSize>100MB</maxFileSize>
-            </timeBasedFileNamingAndTriggeringPolicy>
-            <maxHistory>30</maxHistory>
-        </rollingPolicy>
-        <encoder>
-            <pattern>${LOG_PATTERN}</pattern>
-        </encoder>
-    </appender>
+	<!-- Hide Hibernate -->
+	<logger name="org.hibernate" level="OFF"/>
+	<logger name="org.hibernate.SQL" level="OFF"/>
 
-    <!-- Application packages: DEBUG level for detailed tracing -->
-    <logger name="com.example.ledgersystem" level="DEBUG" additivity="false">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
-    </logger>
+	<!-- Hide Spring -->
+	<logger name="org.springframework" level="WARN"/>
+	<logger name="org.springframework.boot" level="WARN"/>
 
-    <!-- Spring Security: INFO to reduce noise -->
-    <logger name="org.springframework.security" level="INFO"/>
-
-    <!-- Hibernate SQL: WARN to suppress verbose SQL in production -->
-    <logger name="org.hibernate.SQL" level="WARN"/>
-
-    <!-- Root logger -->
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
-    </root>
+	<!-- Root -->
+	<root level="INFO">
+		<appender-ref ref="CONSOLE"/>
+	</root>
 
 </configuration>
