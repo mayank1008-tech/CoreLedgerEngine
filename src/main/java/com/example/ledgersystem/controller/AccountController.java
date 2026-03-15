@@ -2,6 +2,7 @@ package com.example.ledgersystem.controller;
 
 import com.example.ledgersystem.Exceptions.APIexception;
 import com.example.ledgersystem.Payloads.ApiResponse;
+import com.example.ledgersystem.Payloads.CreateAccountDTO;
 import com.example.ledgersystem.Payloads.DepositRequestDTO;
 import com.example.ledgersystem.Payloads.MoneyTransferDTO;
 import com.example.ledgersystem.Payloads.StatementResponse;
@@ -9,7 +10,9 @@ import com.example.ledgersystem.Payloads.WithdrawRequestDTO;
 import com.example.ledgersystem.config.AppConst;
 import com.example.ledgersystem.enums.RateLimitType;
 import com.example.ledgersystem.model.Account;
+import com.example.ledgersystem.model.User;
 import com.example.ledgersystem.repositories.AccountRepository;
+import com.example.ledgersystem.repositories.UserRepository;
 import com.example.ledgersystem.service.AccountService;
 import com.example.ledgersystem.service.RateLimitingService;
 import com.example.ledgersystem.utils.AuthUtils;
@@ -22,6 +25,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,6 +38,8 @@ public class AccountController {
 	private AccountService accountService;
 	@Autowired
 	private AccountRepository accountRepository;
+	@Autowired
+	private UserRepository userRepository;
 	@Autowired
 	private AuthUtils authUtils;
 	@Autowired
@@ -49,6 +55,56 @@ public class AccountController {
 		return !bucket.tryConsume(1);
 	}
 	
+	@PostMapping("/account/create")
+	public ResponseEntity<ApiResponse> createAccount(@Valid @RequestBody CreateAccountDTO createAccountDTO) {
+		UUID userId = authUtils.loggedInUserId();
+		log.info("Create account API called: accountName={}, currency={}, user={}", createAccountDTO.getAccountName(), createAccountDTO.getCurrency(), userId);
+
+		// 🛡️ SHIELD
+		if (isRateLimited(userId, RateLimitType.GENERAL)) {
+			log.warn("Rate limit exceeded: userId={}, type=GENERAL, endpoint=/api/account/create", userId);
+			return new ResponseEntity<>(
+					new ApiResponse("Too many requests! Please wait a minute.", false),
+					HttpStatus.TOO_MANY_REQUESTS
+			);
+		}
+
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new APIexception("User not found"));
+
+		Account account = new Account();
+		account.setName(createAccountDTO.getAccountName());
+		account.setCurrency(createAccountDTO.getCurrency());
+		account.setBalance(BigDecimal.ZERO);
+		account.setUser(user);
+		accountRepository.save(account);
+
+		log.info("Create account API completed: accountId={}, user={}", account.getAccountId(), userId);
+		return new ResponseEntity<>(new ApiResponse("Account created successfully!", true), HttpStatus.CREATED);
+	}
+
+	@GetMapping("/account/list")
+	public ResponseEntity<?> listAccounts() {
+		UUID userId = authUtils.loggedInUserId();
+		log.info("List accounts API called: user={}", userId);
+
+		// 🛡️ SHIELD
+		if (isRateLimited(userId, RateLimitType.GENERAL)) {
+			log.warn("Rate limit exceeded: userId={}, type=GENERAL, endpoint=/api/account/list", userId);
+			return new ResponseEntity<>(
+					new ApiResponse("Too many requests! Please wait a minute.", false),
+					HttpStatus.TOO_MANY_REQUESTS
+			);
+		}
+
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new APIexception("User not found"));
+
+		List<Account> accounts = accountRepository.findAllByUser(user);
+		log.debug("List accounts API completed: user={}, count={}", userId, accounts.size());
+		return new ResponseEntity<>(accounts, HttpStatus.OK);
+	}
+
 	@PostMapping("/transfer")
 	public ResponseEntity<ApiResponse> transferMoney(@Valid @RequestBody MoneyTransferDTO moneyTransferDTO) {
 		UUID userId = authUtils.loggedInUserId();
