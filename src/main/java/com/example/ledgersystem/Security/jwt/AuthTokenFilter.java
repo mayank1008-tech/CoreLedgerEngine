@@ -6,8 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 @Component
+@Slf4j
 public class AuthTokenFilter extends OncePerRequestFilter {
 
     @Autowired
@@ -25,29 +25,32 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     @Autowired
     private UserDetailsServiceImpl userDetailsServiceImpl;
 
-    private static final Logger logger = LoggerFactory.getLogger(AuthTokenFilter.class);
-
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         try{
             String jwt = parseJwt(request); //Extracting token
-            if(jwt!=null && jwtUtils.validateToken(jwt)){ //Validating token
-                String username = jwtUtils.getUserNameFromToken(jwt); //Extracting user
-                UserDetailsImpl userDetails  = (UserDetailsImpl) userDetailsServiceImpl.loadUserByUsername(username);  //Loading userdetails from DB to create a new auth obj
+            if(jwt != null){
+                log.debug("JWT token found in request: path={}", request.getServletPath());
+                if(jwtUtils.validateToken(jwt)){ //Validating token
+                    String username = jwtUtils.getUserNameFromToken(jwt); //Extracting user
+                    log.debug("Valid JWT received for user: {}", username);
+                    UserDetailsImpl userDetails  = (UserDetailsImpl) userDetailsServiceImpl.loadUserByUsername(username);  //Loading userdetails from DB to create a new auth obj
 
 /*This is the child class of actual auth obj*/UsernamePasswordAuthenticationToken authentication = //creating container/auth obj which stores usernamepass and roles
-                        new UsernamePasswordAuthenticationToken(
-                        userDetails, null, userDetails.getAuthorities()
-                );
-                authentication.setDetails( //Adding all request details(ip address) to authetication obj
-                        new WebAuthenticationDetailsSource().buildDetails(request));
+                            new UsernamePasswordAuthenticationToken(
+                            userDetails, null, userDetails.getAuthorities()
+                    );
+                    authentication.setDetails( //Adding all request details(ip address) to authetication obj
+                            new WebAuthenticationDetailsSource().buildDetails(request));
 
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    log.debug("User authenticated: {} with authorities={}", username, userDetails.getAuthorities());
+                }
             }
         } catch (Exception e) {
-            logger.error("Cannot set user authentication: {}", e.getMessage());
+            log.error("Cannot set user authentication: {}", e.getMessage());
         }
         filterChain.doFilter(request, response); //Telling spring to continue with ita in built filters
     }
