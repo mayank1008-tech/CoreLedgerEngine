@@ -117,6 +117,21 @@ Controllers  →  Rate Limit Check  →  Services  →  Repositories  →  Postg
 
 ---
 
+## 🗄️ Database Schema
+
+![Database Schema](https://raw.githubusercontent.com/mayank1008-tech/CoreLedgerEngine/main/coreledrgerengine_erd.png)
+
+### Key Relationships
+
+| Relationship | Type | Detail |
+|---|---|---|
+| `users` ↔ `roles` | Many-to-Many | Linked via `user_role` junction table. A user can hold `ROLE_USER`, `ROLE_ADMIN`, or both. |
+| `users` → `accounts` | One-to-Many | One user can own multiple accounts. Each account carries a `user_id` foreign key. |
+| `transaction` → `ledger_entries` | One-to-Many | Every transaction generates exactly 2 ledger entries — one debit, one credit. |
+| `accounts` → `ledger_entries` | One-to-Many | All ledger entries for an account form its full transaction history, linked by `hash` and `previous_hash` into a tamper-evident chain. |
+
+---
+
 ## 🛠️ Tech Stack
 
 | Layer | Technology | Version | Purpose |
