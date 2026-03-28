@@ -137,6 +137,7 @@ Controllers  →  Rate Limit Check  →  Services  →  Repositories  →  Postg
 | Load Balancer | Nginx | Alpine | Round-robin traffic distribution |
 | CI/CD | GitHub Actions | — | Automated test and build pipeline |
 | Testing | JUnit 5 + Mockito | — | Unit and service layer tests |
+| Logging | LogBack | Slf4j | Debug level console logging |
 
 ---
 
